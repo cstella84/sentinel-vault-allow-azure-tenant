@@ -1,0 +1,66 @@
+import "strings"
+
+## Debug
+# print("request.data: ", request.data)
+# print("request.data length: ", length(request.data))
+# print("request.operation: ", request.operation)
+# print("request.path: ", request.path)
+# print("oidc discovery url length: ", length(request.data.oidc_discovery_url))
+# print("keys of request.data: ", keys(request.data))
+
+# Add list of approved Azure tenants here
+approved_azure_tenants = ["0f682354-0991-4d4e-b12e-xxxxxxxxxxxx"]
+
+# Regular Expression to match Azure OIDC discovery URL
+azure_oidc_regex = "^https://login.microsoftonline.com/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/v2.0$"
+
+# Check if request is for Azure OIDC auth
+is_azure_oidc_tenant = func() {
+    if "oidc_discovery_url" in keys(request.data) and 
+        request.data.oidc_discovery_url matches azure_oidc_regex {
+        return true
+    }
+    return false
+}
+
+# Check if request is Azure auth
+is_azure_tenant = func() {
+    if "tenant_id" in keys(request.data) {
+        return true
+    }
+    return false
+}
+
+is_azure_auth = func() {
+    # Verify data is populated
+    if length(request.data else 0) is 0 {
+        return false
+    }
+
+    # Verify Azure type auth method with tenant specification
+    return is_azure_oidc_tenant() or is_azure_tenant()
+}
+
+# Return Azure tenant ID
+azure_tenant = func() {
+    if is_azure_oidc_tenant() {
+        azure_tenant_id = strings.split(request.data.oidc_discovery_url, "/")[3]
+        return azure_tenant_id
+    }
+
+    if is_azure_tenant() {
+        return request.data.tenant_id
+    }
+
+    error("False Azure tenant determination logic")
+}
+
+precond = rule {
+        request.operation in ["create", "update"] and
+        strings.has_suffix(request.path, "/config") and
+        is_azure_auth()
+}
+
+main = rule when precond {
+    azure_tenant() in approved_azure_tenants
+}
